@@ -142,8 +142,10 @@ export default function RankPage() {
     const fetchPosts = async () => {
       const { data, error } = await supabase.from('posts_new').select('*');
       if (error) {
-        console.error('Error fetching posts:', error);
+        console.error('Error fetching posts:', error.message, error.code);
+        console.error('Full error:', JSON.stringify(error, null, 2));
       } else {
+        console.log('Data fetched:', data);
         const normalized = (data ?? []).map(normalizePost).filter((p) => p.image_url && p.user.avatar);
         setPosts(normalized);
       }
