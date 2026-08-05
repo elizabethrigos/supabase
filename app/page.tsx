@@ -147,7 +147,8 @@ export default function Home() {
     const fetchPosts = async () => {
       const { data, error } = await supabase.from('posts_new').select('*');
       if (error) {
-        console.error('Error fetching posts:', error);
+        console.error('Error fetching posts:', error?.message ?? error, error?.code);
+        console.error('Full error:', JSON.stringify(error, null, 2));
       } else {
         const normalizedPosts = (data ?? [])
           .map(normalizePost)
