@@ -1,7 +1,83 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+// usar etiqueta <img> para preview de archivos locales
+import { supabase } from "../utils/client";
+
 export default function CreatePage() {
+  const router = useRouter();
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [caption, setCaption] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleFileChange = (e: any) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) {
+      setFile(f);
+      setPreview(URL.createObjectURL(f));
+    } else {
+      setFile(null);
+      setPreview(null);
+    }
+  };
+
+  const handleSubmit = async (e: any) => {
+    e.preventDefault();
+    if (!file) return alert("Selecciona una imagen");
+
+    try {
+      setLoading(true);
+
+      // Generar un nombre único
+      const now = Date.now();
+      const ext = file.name.split(".").pop();
+      const fileName = `posts/${now}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      // Subir a Supabase Storage (bucket 'images')
+      const { error: uploadError } = await supabase.storage
+        .from("images")
+        .upload(fileName, file, { cacheControl: "3600", upsert: false });
+
+      if (uploadError) {
+        console.error("Upload error:", uploadError);
+        alert("Error subiendo la imagen");
+        setLoading(false);
+        return;
+      }
+
+      // Obtener URL pública
+      const { data: publicData } = supabase.storage.from("images").getPublicUrl(fileName);
+      const publicUrl = publicData.publicUrl;
+
+      // Insertar en la tabla posts_new (solo imagen y caption)
+      const { error: insertError } = await supabase.from("posts_new").insert([
+        {
+          image_url: publicUrl,
+          caption: caption || "",
+        },
+      ]);
+
+      if (insertError) {
+        console.error("Insert error:", insertError);
+        alert("Error creando el post");
+        setLoading(false);
+        return;
+      }
+
+      // Redirigir al home
+      router.push("/");
+    } catch (err) {
+      console.error(err);
+      alert("Ocurrió un error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-card-bg border-b border-border">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-center">
           <h1 className="text-xl font-bold bg-linear-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -10,37 +86,46 @@ export default function CreatePage() {
         </div>
       </header>
 
-      {/* Contenido placeholder */}
       <main className="max-w-lg mx-auto px-4 py-8">
-        <div className="flex flex-col items-center justify-center gap-4 text-center">
-          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="w-10 h-10 text-primary"
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-foreground">Imagen</span>
+            <input type="file" accept="image/*" onChange={handleFileChange} />
+          </label>
+
+          {preview && (
+            <div className="w-full h-64 rounded overflow-hidden">
+              <img src={preview} alt="preview" className="w-full h-64 object-cover" />
+            </div>
+          )}
+
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-foreground">Caption</span>
+            <input
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              className="w-full rounded border border-border px-3 py-2 bg-card-bg text-foreground"
+              placeholder="Escribe un caption (opcional)"
+            />
+          </label>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 rounded bg-primary text-white disabled:opacity-50"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"
-              />
-            </svg>
+              {loading ? "Subiendo..." : "Publicar"}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/")}
+              className="px-4 py-2 rounded border border-border text-foreground"
+            >
+              Cancelar
+            </button>
           </div>
-          <h2 className="text-xl font-semibold text-foreground">
-            Sube una foto
-          </h2>
-          <p className="text-foreground/60 max-w-xs">
-            Próximamente podrás subir fotos y compartirlas con la comunidad
-          </p>
-        </div>
+        </form>
       </main>
     </div>
   );
